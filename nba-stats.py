@@ -1,77 +1,47 @@
 from requests import get
 from pprint import PrettyPrinter
 
-# Base URL for the Ball Don't Lie API
-BASE_URL = "https://www.balldontlie.io/api/v1/"
+BASE_URL = "https://data.nba.net"
+ALL_JSON = "/prod/v1/today.json"
+
 printer = PrettyPrinter()
 
-def get_games(date="2024-09-25"):
-    """Fetches games played on a given date."""
-    response = get(BASE_URL + f"games?dates[]={date}")
-    
-    if response.status_code != 200:
-        print(f"Failed to fetch data: {response.status_code}")
-        print(response.text)  # Print the response content for debugging
-        return
-    
-    try:
-        games = response.json()['data']
-    except ValueError:
-        print("Response content is not valid JSON")
-        print(response.text)  # Print the raw response text
-        return
+
+def get_links():
+    data = get(BASE_URL + ALL_JSON).json()
+    links = data['links']
+    return links
+
+
+def get_scoreboard():
+    scoreboard = get_links()['currentScoreboard']
+    games = get(BASE_URL + scoreboard).json()['games']
 
     for game in games:
-        home_team = game['home_team']
-        away_team = game['visitor_team']
-        home_score = game['home_team_score']
-        away_score = game['visitor_team_score']
-        status = game['status']
+        home_team = game['hTeam']
+        away_team = game['vTeam']
+        clock = game['clock']
+        period = game['period']
 
         print("------------------------------------------")
-        print(f"{home_team['full_name']} vs {away_team['full_name']}")
-        print(f"{home_score} - {away_score}")
-        print(f"Status: {status}")
+        print(f"{home_team['triCode']} vs {away_team['triCode']}")
+        print(f"{home_team['score']} - {away_team['score']}")
+        print(f"{clock} - {period['current']}")
 
-def get_team_stats():
-    """Fetches team stats leaders."""
-    response = get(BASE_URL + "stats?per_page=100")
-    
-    if response.status_code != 200:
-        print(f"Failed to fetch data: {response.status_code}")
-        print(response.text)  # Print the response content for debugging
-        return
-    
-    try:
-        stats = response.json()['data']
-    except ValueError:
-        print("Response content is not valid JSON")
-        print(response.text)  # Print the raw response text
-        return
 
-    # Filter and sort teams by points per game (ppg)
-    teams = {}
-    for stat in stats:
-        team_id = stat['team']['id']
-        team_name = stat['team']['full_name']
-        ppg = stat['pts']
+def get_stats():
+    stats = get_links()['leagueTeamStatsLeaders']
+    teams = get(
+        BASE_URL + stats).json()['league']['standard']['regularSeason']['teams']
 
-        if team_name not in teams:
-            teams[team_name] = {'team_id': team_id, 'ppg': ppg, 'games': 1}
-        else:
-            teams[team_name]['ppg'] += ppg
-            teams[team_name]['games'] += 1
+    teams = list(filter(lambda x: x['name'] != "Team", teams))
+    teams.sort(key=lambda x: int(x['ppg']['rank']))
 
-    # Calculate average points per game
-    for team_name, data in teams.items():
-        teams[team_name]['ppg'] /= data['games']
+    for i, team in enumerate(teams):
+        name = team['name']
+        nickname = team['nickname']
+        ppg = team['ppg']['avg']
+        print(f"{i + 1}. {name} - {nickname} - {ppg}")
 
-    # Sort teams by their ppg
-    sorted_teams = sorted(teams.items(), key=lambda x: x[1]['ppg'], reverse=True)
 
-    for i, (team_name, data) in enumerate(sorted_teams):
-        print(f"{i + 1}. {team_name} - {data['ppg']:.2f} PPG")
-
-# Example Usage
-get_games()       # To get the games for the current date
-get_team_stats()  # To get the team stats sorted by PPG
+get_stats()
